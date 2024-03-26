@@ -4,7 +4,10 @@ import io.debezium.spi.converter.CustomConverter;
 import io.debezium.spi.converter.RelationalColumn;
 import lombok.extern.slf4j.Slf4j;
 import com.ververica.cdc.connectors.shaded.org.apache.kafka.connect.data.SchemaBuilder;
+import oracle.sql.TIMESTAMP;
 
+import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.util.Date;
@@ -83,7 +86,7 @@ public class OracleDateTimeConverter implements CustomConverter<SchemaBuilder, R
             schemaBuilder = SchemaBuilder.string().optional().name("com.darcytech.debezium.datetime.string");
             converter = this::convertDateTime;
         }
-        if ("TIMESTAMP".equalsIgnoreCase(sqlType)) {
+        if (sqlType.toUpperCase().contains("TIMESTAMP")) {
             schemaBuilder = SchemaBuilder.string().optional().name("com.darcytech.debezium.timestamp.string");
             converter = this::convertTimestamp;
         }
@@ -97,6 +100,10 @@ public class OracleDateTimeConverter implements CustomConverter<SchemaBuilder, R
         if (Objects.isNull(input)) {
             return null;
         }
+        if (input instanceof Timestamp){
+            LocalDateTime localDateTime = ((Timestamp) input).toLocalDateTime();
+            return datetimeFormatter.format(localDateTime);
+        }
         if (input instanceof LocalDate) {
             return dateFormatter.format((LocalDate) input);
         }
@@ -104,6 +111,7 @@ public class OracleDateTimeConverter implements CustomConverter<SchemaBuilder, R
             LocalDate date = LocalDate.ofEpochDay((Integer) input);
             return dateFormatter.format(date);
         }
+
         log.error("MySqlDateTimeConverter convertDate is fail getClass:{}、value:{}", input.getClass(), input.toString());
         return Optional.ofNullable(input).map(p -> p.toString()).orElse(null);
     }
@@ -142,6 +150,16 @@ public class OracleDateTimeConverter implements CustomConverter<SchemaBuilder, R
     private String convertTimestamp(Object input) {
         if (Objects.isNull(input)) {
             return null;
+        }
+        if (input instanceof oracle.sql.TIMESTAMP){
+            Timestamp sqlTimestamp = null;
+            try {
+                sqlTimestamp = ((TIMESTAMP) input).timestampValue();
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
+            }
+            LocalDateTime localDateTime = sqlTimestamp.toLocalDateTime();
+            return timestampFormatter.format(localDateTime);
         }
         if (input instanceof ZonedDateTime) {
             // mysql的timestamp会转成UTC存储，这里的zonedDatetime都是UTC时间
